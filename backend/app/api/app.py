@@ -17,7 +17,7 @@ from app.common.config import RiskConfig
 from app.data.db import Database
 from app.data.price_query import PriceQuery
 from app.api import schemas as s
-from app.api.portfolio_models import (
+from app.common.portfolio_models import (
     BacktestRun, PortfolioBase, PortfolioNav, PortfolioPosition, PortfolioTrade,
 )
 from app.strategy.pool_models import PoolBase, PoolMembership
@@ -98,6 +98,7 @@ def _last_close(db: Database, code: str, before: str | None = None) -> float | N
 
 def create_app(db: Database, config: RiskConfig | None = None) -> FastAPI:
     config = config or RiskConfig()
+    config_initial = 200_000.0
     _ensure_tables(db)
     app = FastAPI(title="stock-system API", version="0.1.0")
     app.state.db = db
@@ -396,6 +397,30 @@ def create_app(db: Database, config: RiskConfig | None = None) -> FastAPI:
                 "pnl": t.get("pnl", 0.0), "pnl_pct": t.get("pnl_pct", 0.0),
                 "reason": t.get("reason", ""),
             }) for t in result.get("trades", [])],
+        )
+
+    # -- /paper（模拟盘，issue #26）--------------------------------------------
+
+    @app.get("/api/paper", response_model=s.PaperReportResponse)
+    def paper_report_endpoint():
+        from app.backtest.paper import paper_report
+
+        rep = paper_report(db, initial_capital=config_initial)
+        return s.PaperReportResponse(
+            initial_capital=rep["initial_capital"],
+            nav=s.NavSeries(
+                dates=[p["date"] for p in rep["nav"]],
+                nav=[p["nav"] for p in rep["nav"]],
+                benchmark=[1.0] * len(rep["nav"]),
+            ),
+            metrics=rep["metrics"],
+            positions=[s.PaperPosition(**p) for p in rep["positions"]],
+            trades=[s.TradeRecord(
+                code=t["code"], entry_date=t["exec_date"],
+                entry_price=t["price"], exit_date=None,
+                exit_price=None, shares=t["shares"], pnl=t["pnl"],
+                pnl_pct=t["pnl_pct"], reason=t["reason"],
+            ) for t in rep["trades"]],
         )
 
     return app

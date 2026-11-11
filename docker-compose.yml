@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    container_name: stock-backend
+    environment:
+      - STOCK_DB_URL=sqlite:////data/stock.db
+    volumes:
+      - stock-data:/data            # SQLite 数据卷持久化
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: stock-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  stock-data:

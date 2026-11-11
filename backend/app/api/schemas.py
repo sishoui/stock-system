@@ -206,3 +206,22 @@ class BacktestReportResponse(BacktestSummary):
     nav: NavSeries
     metrics: dict
     trades: list[TradeRecord]
+
+
+# -- 模拟盘（issue #26）------------------------------------------------------
+
+class PaperPosition(BaseModel):
+    code: str
+    shares: int
+    entry_price: float
+    entry_date: str
+    highest_close: float
+    weight: float
+
+
+class PaperReportResponse(BaseModel):
+    initial_capital: float
+    nav: NavSeries
+    metrics: dict
+    positions: list[PaperPosition]
+    trades: list[TradeRecord]
