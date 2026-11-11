@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<!-- PROTOTYPE，用完即弃。
+     问题：前台（自动化选股系统）页面与信息架构应该长什么样？
+     三个仪表盘变体，结构性不同，通过 ?variant=A|B|C 或底部悬浮条切换。
+     数据全部为假数据，无任何后端依赖。技术栈落点（Vue3+ElementPlus+ECharts）见 #8，本文件仅回答信息架构。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>原型：前台页面与功能范围 — 仪表盘 3 变体</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2129; --panel2: #222b35; --border: #2d3844;
+    --fg: #d8e0e8; --muted: #8a97a5; --up: #e35d5d; --down: #3fb96f; /* A股红涨绿跌 */
+    --accent: #4d8ef7; --warn: #e8a33d; --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.5 "Microsoft YaHei", system-ui, sans-serif; padding-bottom: 72px; }
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; }
+  .topbar .logo { font-weight: 700; color: var(--accent); }
+  .topbar nav { display: flex; gap: 4px; }
+  .topbar nav a { color: var(--muted); text-decoration: none; padding: 6px 14px; border-radius: 6px; }
+  .topbar nav a.active { color: var(--fg); background: var(--panel2); }
+  .topbar .clock { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .page { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
+  h2 { font-size: 16px; margin-bottom: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .grid { display: grid; gap: 12px; }
+  .muted { color: var(--muted); }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--border); }
+  .tag.buy { color: var(--up); border-color: var(--up); }
+  .tag.sell { color: var(--down); border-color: var(--down); }
+  .tag.watch { color: var(--warn); border-color: var(--warn); }
+  .tag.ok { color: var(--down); } .tag.err { color: var(--up); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 400; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  .bar { height: 6px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  /* 原型切换条（不属于设计本身） */
+  .proto-bar { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; background: #000; border: 1px solid #555; border-radius: 999px; padding: 8px 14px; box-shadow: 0 4px 20px rgba(0,0,0,.6); z-index: 99; }
+  .proto-bar button { background: #333; color: #fff; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; font-size: 15px; }
+  .proto-bar .label { color: #fff; min-width: 220px; text-align: center; font-size: 13px; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <span class="logo">选股系统</span>
+  <nav>
+    <a class="active" href="#">仪表盘</a><a href="#">股票池</a><a href="#">个股详情</a><a href="#">持仓与交易</a><a href="#">回测</a>
+  </nav>
+  <span class="clock">2026-01-16 周五 15:05 收盘后 · 数据已更新 15:02</span>
+</header>
+<main class="page" id="app"></main>
+
+<div class="proto-bar">
+  <button id="prev">←</button>
+  <span class="label" id="proto-label"></span>
+  <button id="next">→</button>
+</div>
+
+<script>
+/* ================== 假数据 ================== */
+const actions = [
+  { code:'600519', name:'贵州茅台', act:'buy',  tag:'强', reason:'站稳MA20，量1.8×，AI正面', pos:'10%' },
+  { code:'000858', name:'五粮液',   act:'buy',  tag:'强', reason:'上穿MA20+量价确认', pos:'10%' },
+  { code:'300750', name:'宁德时代', act:'buy',  tag:'中', reason:'趋势确认，量能不足', pos:'6%' },
+  { code:'601318', name:'中国平安', act:'sell', tag:'止损', reason:'跌破MA20（逻辑止损）', pos:'6.2%' },
+  { code:'002415', name:'海康威视', act:'sell', tag:'止盈', reason:'回撤2.4×ATR 触发移动止盈', pos:'9.8%' },
+  { code:'600036', name:'招商银行', act:'watch',tag:'弱', reason:'单一信号，仅观察', pos:'—' },
+];
+const positions = [
+  { code:'600519', name:'贵州茅台', weight:'9.9%', pnl:'+4.2%', stop:'1,612 (ATR)', tp:'1,750 (移动)', dist:'+2.1%' },
+  { code:'300750', name:'宁德时代', weight:'6.0%', pnl:'-1.3%', stop:'208.5 (MA20)', tp:'—', dist:'-4.8%' },
+  { code:'601318', name:'中国平安', weight:'6.2%', pnl:'-3.1%', stop:'已触发', tp:'—', dist:'⚠ 次日开盘卖出' },
+  { code:'002415', name:'海康威视', weight:'9.8%', pnl:'+11.6%', stop:'28.4 (ATR)', tp:'已触发', dist:'⚠ 次日开盘卖出' },
+];
+const poolTop = [
+  { code:'600519', name:'贵州茅台', q:92, g:61, v:78, ai:'正面', sig:'强', score:79 },
+  { code:'000858', name:'五粮液',   q:85, g:70, v:74, ai:'正面', sig:'强', score:77 },
+  { code:'300750', name:'宁德时代', q:78, g:88, v:52, ai:'中性', sig:'中', score:73 },
+  { code:'600036', name:'招商银行', q:81, g:44, v:70, ai:'未评', sig:'弱', score:66 },
+  { code:'002415', name:'海康威视', q:70, g:58, v:81, ai:'负面', sig:'—', score:69 },
+];
+const jobs = [
+  { name:'日线数据同步', state:'ok', time:'15:02' },
+  { name:'AI 三判断评估', state:'ok', time:'14:40 · 62/80 已评' },
+  { name:'财报季初筛重算', state:'ok', time:'10-28 完成' },
+  { name:'数据对账校验', state:'err', time:'15:03 · 2 只异常待查' },
+];
+const navCurve = [100,101.2,99.8,102,103.5,102.8,105,106.2,104.9,107,108.3,107.1,109.5,110.2,108.8,111,112.4,111.2,113.6,114.9];
+const benchCurve = [100,100.5,99.6,100.8,101.5,101,102.2,102.8,102,103,103.8,103.2,104,104.5,103.8,104.9,105.5,104.8,106,106.5];
+
+function sparkline(a, w, h, color) {
+  const min = Math.min(...a), max = Math.max(...a);
+  const pts = a.map((v,i)=>`${(i/(a.length-1))*w},${h-2-((v-min)/(max-min))*(h-4)}`).join(' ');
+  return `<svg width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2"/></svg>`;
+}
+function lineChart(a, b, w, h) {
+  const all=[...a,...b], min=Math.min(...all), max=Math.max(...all);
+  const pl = arr => arr.map((v,i)=>`${(i/(arr.length-1))*w},${h-20-((v-min)/(max-min))*(h-40)}`).join(' ');
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}">
+    <polyline points="${pl(b)}" fill="none" stroke="#8a97a5" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <polyline points="${pl(a)}" fill="none" stroke="#4d8ef7" stroke-width="2"/>
+    <text x="6" y="14" fill="#8a97a5" font-size="11">策略 vs 沪深300（20日净值）</text></svg>`;
+}
+function kline(w, h) { /* 简易假K线 */
+  let bars='', x=10, prices=[100];
+  let p=100;
+  for (let i=0;i<40;i++){ const o=p, c=p+(Math.random()-0.45)*4; const hi=Math.max(o,c)+Math.random()*1.5, lo=Math.min(o,c)-Math.random()*1.5;
+    const col=c>=o?'#e35d5d':'#3fb96f'; bars+=`<line x1="${x}" y1="${h-((hi-80)/30)*h*0.7}" x2="${x}" y2="${h-((lo-80)/30)*h*0.7}" stroke="${col}"/>
+    <rect x="${x-3}" y="${h-((Math.max(o,c)-80)/30)*h*0.7}" width="6" height="${Math.max(2,Math.abs(o-c)/30*h*0.7)}" fill="${col}"/>`;
+    p=c; x+=7; }
+  // MA20
+  let ma=''; for(let i=0;i<40;i++){ ma+=`${10+i*7},${h-((96+Math.sin(i/6)*3-80)/30)*h*0.7} `; }
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}">${bars}<polyline points="${ma}" fill="none" stroke="#e8a33d" stroke-width="1.5"/></svg>`;
+}
+const scoreBar = v => `<div class="bar" style="width:70px"><i style="width:${v}%"></i></div>`;
+function posTable(rows) {
+  return `<table><tr><th>代码</th><th>名称</th><th>仓位</th><th>浮动盈亏</th><th>止损线</th><th>止盈线</th><th>距止损</th></tr>` +
+    rows.map(r=>`<tr><td>${r.code}</td><td>${r.name}</td><td>${r.weight}</td><td class="${r.pnl.startsWith('+')?'up':'down'}">${r.pnl}</td><td class="muted">${r.stop}</td><td class="muted">${r.tp}</td><td>${r.dist}</td></tr>`).join('') + `</table>`;
+}
+function riskReadout() { /* Q2：第一版只读展示 RiskConfig 摘要 */
+  return `<div class="card"><h2>风控参数（只读）</h2><div class="grid" style="grid-template-columns:repeat(4,1fr);font-size:12px">
+    <div>最大持仓 <b>K=10</b></div><div>止损 <b>2×ATR / 破MA20</b></div><div>移动止盈 <b>3×ATR / 8%</b></div>
+    <div>单票封顶 <b>15%</b></div><div>行业封顶 <b>30%</b></div><div>熔断 <b>回撤10%停 / 5%复</b></div>
+    <div>佣金 <b>0.025%</b></div><div>滑点 <b>0.1%</b></div></div>
+    <div class="muted" style="margin-top:8px;font-size:12px">编辑请改配置文件（第一版），修改后次日生效</div></div>`;
+}
+
+/* ================== 变体 A：今日行动导向 ================== */
+function VariantA() {
+  return `
+  <h2>今日行动（收盘决策 · 次日开盘执行）</h2>
+  <div class="card">
+    ${actions.map(a=>`<div style="display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid var(--border)">
+      <span class="tag ${a.act}">${a.act==='buy'?'买入':a.act==='sell'?'卖出':'观察'} · ${a.tag}</span>
+      <b>${a.name}</b><span class="muted">${a.code}</span>
+      <span>${a.reason}</span>
+      ${a.pos!=='—'?`<span class="muted" style="margin-left:auto">仓位 ${a.pos}</span>`:'<span style="margin-left:auto"></span>'}
+    </div>`).join('')}
+    <div class="muted" style="margin-top:10px">以上 6 条指令将于次日开盘按 RiskConfig 执行 · 组合回撤 3.2%，未触发熔断（10%）</div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:12px">
+    <div class="card"><h2>股票池</h2><div style="font-size:28px">76<span class="muted" style="font-size:14px"> / 80</span></div>
+      <div class="muted">本月跌出 4 · 新进 3 · AI 已评 62</div></div>
+    <div class="card"><h2>持仓</h2><div style="font-size:28px">4<span class="muted" style="font-size:14px"> / 10</span></div>
+      <div class="muted">今日触发卖出 2 笔（次晨执行）</div></div>
+    <div class="card"><h2>净值（20日）</h2>${sparkline(navCurve, 200, 44, '#4d8ef7')}
+      <div class="muted">+14.9% · 超额 +8.4% · 回撤 3.2%</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:2fr 1fr;margin-top:12px">
+    <div class="card"><h2>持仓明细</h2>${posTable(positions)}</div>
+    <div class="card"><h2>系统状态</h2>${jobs.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0"><span>${j.name}</span><span class="tag ${j.state}">${j.state==='ok'?'正常':j.state}</span></div>`).join('')}</div>
+  </div>
+  <div style="margin-top:12px">${riskReadout()}</div>`;
+}
+
+/* ================== 变体 B：监视器 / 布局密集型 ================== */
+function VariantB() {
+  return `
+  <div class="grid" style="grid-template-columns:240px 1fr 300px">
+    <div class="card"><h2>池内 Top（按打分）</h2>
+      <table>${poolTop.map(p=>`<tr><td>${p.name}</td><td>${p.score}</td><td><span class="tag ${p.sig==='强'?'buy':p.sig==='中'?'watch':''}">${p.sig}</span></td></tr>`).join('')}</table>
+      <div class="muted" style="margin-top:8px">共 76 只 · 点开进个股详情</div></div>
+    <div style="display:grid;gap:12px;align-content:start">
+      <div class="card"><h2>组合净值 vs 沪深300</h2>${lineChart(navCurve, benchCurve, 560, 180)}</div>
+      <div class="card"><h2>待执行指令（次日开盘）</h2>
+        <table><tr><th>方向</th><th>股票</th><th>依据</th><th>仓位</th></tr>
+        ${actions.filter(a=>a.act!=='watch').map(a=>`<tr><td><span class="tag ${a.act}">${a.act==='buy'?'买':'卖'}</span></td><td>${a.name}</td><td class="muted">${a.reason}</td><td>${a.pos}</td></tr>`).join('')}</table></div>
+    </div>
+    <div style="display:grid;gap:12px;align-content:start">
+      <div class="card"><h2>数据 / AI 任务</h2>${jobs.map(j=>`<div style="padding:5px 0;border-bottom:1px solid var(--border)"><div>${j.name}</div><div class="muted" style="font-size:12px">${j.time}</div></div>`).join('')}</div>
+      <div class="card"><h2>风控读数</h2>
+        <div class="grid" style="grid-template-columns:1fr 1fr;font-size:12px">
+        <div>回撤 <b class="down">3.2%</b> / 10%</div><div>行业集中 <b>28%</b> / 30%</div>
+        <div>现金比例 <b>68%</b></div><div>熔断 <b class="tag ok">未触发</b></div></div></div>
+      ${riskReadout()}
+    </div>
+  </div>`;
+}
+
+/* ================== 变体 C：图表主导 / K线优先 ================== */
+function VariantC() {
+  return `
+  <div class="grid" style="grid-template-columns:1fr 340px">
+    <div class="card"><h2>重点个股 · 贵州茅台 600519（点击池内个股切换）</h2>
+      ${kline(620, 220)}
+      <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-top:10px;font-size:12px">
+        <div>信号 <b class="tag buy">强</b></div><div>MA20 <b class="up">上拐</b></div><div>量能 <b>1.8×20日均量</b></div><div>AI <b class="tag ok">正面</b></div>
+      </div></div>
+    <div style="display:grid;gap:12px;align-content:start">
+      <div class="card"><h2>今日行动摘要</h2>
+        ${actions.slice(0,4).map(a=>`<div style="padding:5px 0;border-bottom:1px solid var(--border)"><span class="tag ${a.act}">${a.act==='buy'?'买':a.act==='sell'?'卖':'观'}</span> ${a.name} <span class="muted" style="font-size:12px">${a.reason}</span></div>`).join('')}</div>
+      <div class="card"><h2>估值分位（该股）</h2>
+        <div style="padding:6px 0">PE 历史分位 ${scoreBar(32)} <span class="muted">32%</span></div>
+        <div style="padding:6px 0">PE 行业分位 ${scoreBar(45)} <span class="muted">45%</span></div>
+        <div style="padding:6px 0">PB 历史分位 ${scoreBar(28)} <span class="muted">28%</span></div></div>
+      <div class="card"><h2>组合曲线</h2>${sparkline(navCurve, 300, 60, '#4d8ef7')}</div>
+    </div>
+  </div>
+  <div class="grid" style="grid-template-columns:2fr 1fr;margin-top:12px">
+    <div class="card"><h2>持仓与风控</h2>${posTable(positions)}</div>
+    <div class="card"><h2>系统状态</h2>${jobs.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0"><span>${j.name}</span><span class="tag ${j.state}">${j.state==='ok'?'正常':j.state}</span></div>`).join('')}</div>
+  </div>`;
+}
+
+/* ================== 切换器 ================== */
+const variants = [
+  ['A', '变体 A · 今日行动导向（推荐）', VariantA],
+  ['B', '变体 B · 三栏监视器（信息密集）', VariantB],
+  ['C', '变体 C · 图表主导（个股K线优先）', VariantC],
+];
+function render() {
+  const v = new URLSearchParams(location.search).get('variant') ?? 'A';
+  const i = Math.max(0, variants.findIndex(x=>x[0]===v));
+  const [, label, fn] = variants[i];
+  document.getElementById('app').innerHTML = fn();
+  document.getElementById('proto-label').textContent = label;
+}
+function go(d) {
+  const cur = new URLSearchParams(location.search).get('variant') ?? 'A';
+  const i = variants.findIndex(x=>x[0]===cur);
+  const next = variants[(i + d + variants.length) % variants.length][0];
+  const url = new URL(location); url.searchParams.set('variant', next);
+  history.replaceState(null, '', url); render();
+}
+document.getElementById('prev').onclick = () => go(-1);
+document.getElementById('next').onclick = () => go(1);
+document.addEventListener('keydown', e => {
+  if (document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === 'ArrowLeft') go(-1);
+  if (e.key === 'ArrowRight') go(1);
+});
+render();
+</script>
+</body>
+</html>
