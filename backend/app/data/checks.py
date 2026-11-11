@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from app.common.enums import CHECK_ABNORMAL, CHECK_COMPLETENESS, CHECK_CROSS, CHECK_SUSPENSION
 from app.data.db import Database
 
 
@@ -43,10 +44,10 @@ def completeness_check(
         }
     missing = [c for c in all_codes if c not in present and c not in suspended]
     if missing:
-        _log(db, date, "completeness", ",".join(missing), "warn", "warn",
+        _log(db, date, CHECK_COMPLETENESS, ",".join(missing), "warn", "warn",
              f"缺失 {len(missing)} 只: {','.join(missing)}")
     else:
-        _log(db, date, "completeness", "ALL", "ok", "info", "对账无缺口")
+        _log(db, date, CHECK_COMPLETENESS, "ALL", "ok", "info", "对账无缺口")
     return missing
 
 
@@ -63,10 +64,10 @@ def suspension_check(db: Database, date: str) -> list[str]:
             ).all()
         )
     if suspended:
-        _log(db, date, "suspension", ",".join(suspended), "ok", "info",
+        _log(db, date, CHECK_SUSPENSION, ",".join(suspended), "ok", "info",
              f"停牌 {len(suspended)} 只: {','.join(suspended)}")
     else:
-        _log(db, date, "suspension", "ALL", "ok", "info", "无停牌")
+        _log(db, date, CHECK_SUSPENSION, "ALL", "ok", "info", "无停牌")
     return suspended
 
 
@@ -104,10 +105,10 @@ def cross_check(
             mismatches.append(code)
 
     if mismatches:
-        _log(db, date, "cross", ",".join(mismatches), "warn", "warn",
+        _log(db, date, CHECK_CROSS, ",".join(mismatches), "warn", "warn",
              f"收盘价偏差超 {tolerance:.1%}: {','.join(mismatches)}")
     else:
-        _log(db, date, "cross", "ALL", "ok", "info", f"对账 {len(targets)} 只无偏差")
+        _log(db, date, CHECK_CROSS, "ALL", "ok", "info", f"对账 {len(targets)} 只无偏差")
     return mismatches
 
 
@@ -165,10 +166,10 @@ def abnormal_check(db: Database, date: str, pct_limit: float = 0.44,
 
     if issues:
         scope = ",".join(c for c, _ in issues)
-        _log(db, date, "abnormal", scope, "error", "error",
+        _log(db, date, CHECK_ABNORMAL, scope, "error", "error",
              "; ".join(f"{c}:{r}" for c, r in issues))
     else:
-        _log(db, date, "abnormal", "ALL", "ok", "info", "无异常值")
+        _log(db, date, CHECK_ABNORMAL, "ALL", "ok", "info", "无异常值")
     return issues
 
 

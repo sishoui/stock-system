@@ -130,7 +130,7 @@ class TestSizing:
         out = sizing.allocate(capital=1_000_000.0, signals=[_Sig("A", "strong")],
                               holdings=[], config=RiskConfig())
         assert out[0].weight == pytest.approx(0.10)  # 1.0 × 1/10
-        out = sizing.allocate(capital=1_000_000.0, signals=[_Sig("A", "mid")],
+        out = sizing.allocate(capital=1_000_000.0, signals=[_Sig("A", "medium")],
                               holdings=[], config=RiskConfig())
         assert out[0].weight == pytest.approx(0.06)
 

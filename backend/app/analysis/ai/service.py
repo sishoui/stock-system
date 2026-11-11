@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from pydantic import ValidationError
 
+from app.common.enums import AI_PENDING
 from app.data.db import Database
 from app.data.db_models import AiAssessment
 
@@ -133,7 +134,7 @@ def persist_degraded_assessment(
         s.add(AiAssessment(
             code=code,
             assessed_at=assessed_at,
-            authenticity="pending",
+            authenticity=AI_PENDING,
             authenticity_confidence=None,
             timeliness_valid_until=None,
             sustainability_score=None,
@@ -163,7 +164,7 @@ def get_ai_factor(db: Database, code: str) -> dict:
     if row is None:
         return {
             "status": "not_assessed",
-            "authenticity": "pending",
+            "authenticity": AI_PENDING,
             "authenticity_confidence": None,
             "valid_until": None,
             "sustainability_score": 0.0,
@@ -171,7 +172,7 @@ def get_ai_factor(db: Database, code: str) -> dict:
             "model_version": None,
             "data_fingerprint": None,
         }
-    degraded = row.authenticity == "pending"
+    degraded = row.authenticity == AI_PENDING
     return {
         "status": "ok" if not degraded else "not_assessed",
         "authenticity": row.authenticity,

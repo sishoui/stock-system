@@ -26,6 +26,7 @@ from .service import (  # noqa: F401 兼容旧私有名引用
 )
 from .schemas import ThreeJudgmentOutput  # noqa: F401 类型引用
 from app.common.config import AIConfig
+from app.common.enums import AI_PENDING
 from app.data.db import Database
 from app.data.db_models import AiAssessment
 
@@ -48,7 +49,7 @@ def _latest_fingerprint(db: Database, code: str) -> str | None:
     with db.session() as s:
         row = (
             s.query(AiAssessment)
-            .filter(AiAssessment.code == code, AiAssessment.authenticity != "pending")
+            .filter(AiAssessment.code == code, AiAssessment.authenticity != AI_PENDING)
             .order_by(AiAssessment.assessed_at.desc(), AiAssessment.id.desc())
             .first()
         )
@@ -217,7 +218,7 @@ def _persist_budget_skipped(
     with db.session() as s:
         s.add(AiAssessment(
             code=code, assessed_at=assessed_at,
-            authenticity="pending",
+            authenticity=AI_PENDING,
             model_version=model_version,
             data_fingerprint=f"budget:{code}:{assessed_at}",
             payload_json=json.dumps(

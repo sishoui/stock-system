@@ -14,6 +14,7 @@ from app.analysis.ai.service import get_ai_factor
 from app.backtest.engine import BacktestEngine
 from app.backtest.metrics import compute_metrics
 from app.common.config import RiskConfig
+from app.common.enums import SIGNAL_MEDIUM, SIGNAL_STRONG, SIGNAL_WEAK
 from app.data.db import Database
 from app.data.price_query import PriceQuery
 from app.api import schemas as s
@@ -125,11 +126,9 @@ def create_app(db: Database, config: RiskConfig | None = None) -> FastAPI:
                 sig = get_entry_signal(db, m.code, _latest_date(db))
             except Exception:
                 continue
-            if sig.level == "strong":
+            if sig.level in (SIGNAL_STRONG, SIGNAL_MEDIUM):
                 buy_candidates.append(m.code)
-            elif sig.level == "medium":
-                buy_candidates.append(m.code)
-            elif sig.level == "weak":
+            elif sig.level == SIGNAL_WEAK:
                 watch.append(m.code)
         sell_orders = [t.code for t in recent_trades if t.action == "SELL"][:5]
         ai_ok = any(get_ai_factor(db, m.code)["status"] == "ok" for m in members) \
@@ -167,7 +166,7 @@ def create_app(db: Database, config: RiskConfig | None = None) -> FastAPI:
                 sig = get_entry_signal(db, m.code, latest)
                 level, reasons = sig.level, sig.reasons
             except Exception:
-                level, reasons = "weak", []
+                level, reasons = SIGNAL_WEAK, []
             af = get_ai_factor(db, m.code)
             items.append(s.PoolItem(
                 code=m.code, name=_name_of(db, m.code) or m.code,
@@ -236,7 +235,7 @@ def create_app(db: Database, config: RiskConfig | None = None) -> FastAPI:
                                   breakout=sig.breakout, ai=sig.ai,
                                   reasons=sig.reasons)
         except Exception:
-            signal = s.SignalInfo(level="weak", trend=False, volume_confirm=False,
+            signal = s.SignalInfo(level=SIGNAL_WEAK, trend=False, volume_confirm=False,
                                   breakout=False, ai="neutral", reasons=["数据不足"])
         return s.StockDetailResponse(
             code=code, name=profile, kline=kline,

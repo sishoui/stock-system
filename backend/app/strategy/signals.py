@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from app.analysis.ai.service import get_ai_factor
 from app.data.price_query import PriceQuery
 from app.strategy.pool_models import PoolBase, PoolMembership
+from app.common.enums import SIGNAL_LEVELS, SIGNAL_MEDIUM, SIGNAL_STRONG, SIGNAL_WEAK
 
 MA_WINDOW = 20
 VOLUME_WINDOW = 20
@@ -50,7 +51,7 @@ class EntrySignal:
     @property
     def entry_allowed(self) -> bool:
         """允许入场 = 强/中；弱仅观察不入场（spec §6）。"""
-        return self.level in ("strong", "medium")
+        return self.level in (SIGNAL_STRONG, SIGNAL_MEDIUM)
 
 
 def _ensure_tables(db) -> None:
@@ -92,7 +93,7 @@ def evaluate_entry_signal(
     upto = [b for b in bars if b.date <= trade_date]
     if len(upto) < MIN_HISTORY:
         return EntrySignal(
-            code=code, date=trade_date, level="weak", trend=False,
+            code=code, date=trade_date, level=SIGNAL_WEAK, trend=False,
             volume_confirm=False, breakout=False, ai="neutral",
             reasons=[f"历史数据不足（{len(upto)} < {MIN_HISTORY} 根），仅观察"],
         )
@@ -131,25 +132,25 @@ def evaluate_entry_signal(
 
     # 原始档：趋势+量价 → 强；仅趋势 → 中；其余 → 弱（激进信号保底中）
     if trend and volume_confirm:
-        level = "strong"
+        level = SIGNAL_STRONG
         reasons.append("趋势 + 量价确认同时满足")
     elif trend or breakout:
-        level = "medium"
+        level = SIGNAL_MEDIUM
     else:
-        level = "weak"
+        level = SIGNAL_WEAK
 
     # AI 加减分：正面升级、中性不变、负面降一级
     # 「强」要求 AI 可持续性正面：中性时强降为中（不变仅相对既有档位语义）
     if ai == "positive":
-        if level != "strong":
-            level = {"medium": "strong", "weak": "medium"}[level]
+        if level != SIGNAL_STRONG:
+            level = {SIGNAL_MEDIUM: SIGNAL_STRONG, SIGNAL_WEAK: SIGNAL_MEDIUM}[level]
         reasons.append("AI 可持续性正面（升一级）")
     elif ai == "negative":
-        if level != "weak":
-            level = {"strong": "medium", "medium": "weak"}[level]
+        if level != SIGNAL_WEAK:
+            level = {SIGNAL_STRONG: SIGNAL_MEDIUM, SIGNAL_MEDIUM: SIGNAL_WEAK}[level]
         reasons.append("AI 可持续性负面（降一级）")
-    elif level == "strong":
-        level = "medium"
+    elif level == SIGNAL_STRONG:
+        level = SIGNAL_MEDIUM
     return EntrySignal(code=code, date=trade_date, level=level, trend=trend,
                        volume_confirm=volume_confirm, breakout=breakout,
                        ai=ai, reasons=reasons)

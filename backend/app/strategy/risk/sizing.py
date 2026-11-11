@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.common.config import RiskConfig
+from app.common.enums import SIGNAL_MEDIUM, SIGNAL_STRONG
 
 
 @dataclass
@@ -33,7 +34,7 @@ class PlannedPosition:
     action: str  # BUY / REPLACE（REPLACE 附 replace_code）
 
 
-SCALE = {"strong": "position_scale_strong", "mid": "position_scale_mid"}
+SCALE = {SIGNAL_STRONG: "position_scale_strong", SIGNAL_MEDIUM: "position_scale_mid"}
 
 
 def base_weight(capital: float, config: RiskConfig) -> float:

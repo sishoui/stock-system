@@ -15,6 +15,7 @@ from sqlalchemy import text
 from app.backtest import matching
 from app.backtest.metrics import compute_metrics
 from app.common.config import RiskConfig
+from app.common.enums import SIGNAL_STRONG, normalize_signal_level
 from app.data.db import Database
 from app.data.price_query import PriceQuery
 from app.strategy.pool_models import PoolBase
@@ -258,9 +259,9 @@ class BacktestEngine:
                 sig_list = [
                     sizing.SignalLike(
                         code=code,
-                        level={"medium": "mid", "strong": "strong", "weak": "weak"}[sig.level],
+                        level=normalize_signal_level(sig.level),
                         industry=industry_of(self.db, code),
-                        score=100.0 + (10.0 if sig.level == "strong" else 0.0))
+                        score=100.0 + (10.0 if sig.level == SIGNAL_STRONG else 0.0))
                     for code, sig in signals.items() if sig.entry_allowed
                 ]
                 if sig_list:
