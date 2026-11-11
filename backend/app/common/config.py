@@ -46,6 +46,12 @@ class RiskConfig(_Config):
     max_industry_weight: float = Field(0.30, ge=0.20, le=0.40, description="同行业仓位上限")
     dd_circuit_break: float = Field(0.10, ge=0.08, le=0.15, description="熔断触发回撤")
     dd_recover: float = Field(0.05, ge=0.03, le=0.08, description="熔断恢复线")
+    # 撮合口径（spec §8.2，参数进 RiskConfig）
+    commission_rate: float = Field(0.00025, ge=0.0, le=0.01, description="佣金率（双边）")
+    min_commission: float = Field(5.0, ge=0.0, description="单笔最低佣金（元）")
+    stamp_tax: float = Field(0.0005, ge=0.0, le=0.01, description="印花税率（仅卖出）")
+    slippage: float = Field(0.001, ge=0.0, le=0.05, description="固定滑点（按开盘价）")
+    limit_pct: float = Field(0.10, ge=0.05, le=0.20, description="涨跌停幅度")
 
     @field_validator("dd_recover")
     @classmethod
