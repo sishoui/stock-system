@@ -3,3 +3,5 @@ pyyaml
 pytest
 fastapi
 uvicorn
+
+pandas>=2.0
