@@ -16,10 +16,20 @@ from app.backtest import matching
 from app.backtest.metrics import compute_metrics
 from app.common.config import RiskConfig
 from app.data.db import Database
+from app.data.price_query import PriceQuery
 from app.strategy.pool_models import PoolBase
 from app.strategy.risk import exits, sizing
 from app.strategy.risk.circuit import CircuitBreaker
 from app.strategy.signals import generate_entry_signals
+
+
+def industry_of(db: Database, code: str) -> str:
+    """行业 = stock_profile.board（数据层单一来源；无档案返回空串）。"""
+    from app.data.db_models import StockProfile
+
+    with db.session() as s:
+        row = s.query(StockProfile.board).filter(StockProfile.code == code).first()
+    return row[0] if row else ""
 
 BENCHMARK_CODE = "000300.SH"
 
@@ -73,14 +83,17 @@ class BacktestResult:
 
 
 class BacktestEngine:
-    def __init__(self, db: Database, config: RiskConfig, initial_capital: float = 200_000.0,
+    def __init__(self, db: Database, config: RiskConfig,
+                 initial_capital: float | None = None,
                  start: str = "", end: str = "", benchmark_code: str = BENCHMARK_CODE):
         self.db = db
         self.config = config
-        self.initial_capital = initial_capital
+        # 初始资金单一来源：RiskConfig.initial_capital（显式传参可覆盖）
+        self.initial_capital = initial_capital or config.initial_capital
         self.start = start
         self.end = end
         self.benchmark_code = benchmark_code
+        self._pq = PriceQuery(db)
 
     # -- 数据辅助 ----------------------------------------------------------
 
@@ -106,21 +119,10 @@ class BacktestEngine:
         return {str(d): (c or first) / first for d, c in rows}
 
     def _close(self, code: str, dt: str) -> float | None:
-        with self.db.session() as s:
-            v = s.execute(text(
-                "SELECT close FROM daily_bar WHERE code=:c AND date=:d"
-            ), {"c": code, "d": dt}).scalar()
-        return v
+        return self._pq.get_close(code, dt)
 
     def _open(self, code: str, dt: str) -> tuple[float | None, float | None]:
-        with self.db.session() as s:
-            row = s.execute(text(
-                "SELECT open,"
-                " (SELECT close FROM daily_bar p WHERE p.code=:c AND p.date<:d"
-                "  ORDER BY p.date DESC LIMIT 1)"
-                " FROM daily_bar WHERE code=:c AND date=:d"
-            ), {"c": code, "d": dt}).first()
-        return (row[0], row[1]) if row else (None, None)
+        return self._pq.get_open_with_prev_close(code, dt)
 
     # -- 撮合 ----------------------------------------------------------------
 
@@ -257,7 +259,7 @@ class BacktestEngine:
                     sizing.SignalLike(
                         code=code,
                         level={"medium": "mid", "strong": "strong", "weak": "weak"}[sig.level],
-                        industry="",
+                        industry=industry_of(self.db, code),
                         score=100.0 + (10.0 if sig.level == "strong" else 0.0))
                     for code, sig in signals.items() if sig.entry_allowed
                 ]

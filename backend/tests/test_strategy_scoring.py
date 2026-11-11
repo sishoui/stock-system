@@ -95,9 +95,10 @@ class TestHardGates:
     def test_h5_cashflow_below_half_profit(self):
         assert check_hard_gates(**self._factors(operating_cashflow=40.0, net_profit=100.0)) == ["H5"]
 
-    def test_h5_no_profit_requires_positive_cashflow(self):
-        # 净利为负时：只要现金流>0 且比例无法判定，不触发 H5（现金流>0 即可）
-        assert check_hard_gates(**self._factors(net_profit=-50.0, operating_cashflow=10.0)) == []
+    def test_h5_no_profit_excluded_conservatively(self):
+        # 净利为负/为零：比值无意义 → 保守口径直接剔除（GLOSSARY H5 口径）
+        assert check_hard_gates(**self._factors(net_profit=-50.0, operating_cashflow=10.0)) == ["H5"]
+        assert check_hard_gates(**self._factors(net_profit=0.0, operating_cashflow=10.0)) == ["H5"]
 
     def test_multiple_gates_sorted(self):
         r = check_hard_gates(**self._factors(is_st=True, roe_ttm=1.0))

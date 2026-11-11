@@ -18,7 +18,12 @@ from .client import LLMClient, LLMResponse
 from .cost import CostTracker
 from .inputs import AnnouncementProvider
 from .prompts import build_prompt, build_inputs
-from .service import _parse, _persist, _persist_degraded, fingerprint
+from .service import (  # noqa: F401 兼容旧私有名引用
+    parse_llm_output as _parse,
+    persist_assessment as _persist,
+    persist_degraded_assessment as _persist_degraded,
+    fingerprint,
+)
 from .schemas import ThreeJudgmentOutput  # noqa: F401 类型引用
 from app.common.config import AIConfig
 from app.data.db import Database

@@ -113,8 +113,13 @@ def cross_check(
 
 # ---------------------------------------------------------------- 4 异常值
 
-def abnormal_check(db: Database, date: str, pct_limit: float = 0.44) -> list[tuple[str, str]]:
-    """返回 [(code, 原因)]。涨跌幅超限 / 价格≤0 / HLC 矛盾。留痕 error。"""
+def abnormal_check(db: Database, date: str, pct_limit: float = 0.44,
+                   exempt_trading_days: int = 244) -> list[tuple[str, str]]:
+    """返回 [(code, 原因)]。涨跌幅超限 / 价格≤0 / HLC 矛盾。留痕 error。
+
+    新股豁免：上市（在库首个交易日）未满 exempt_trading_days（默认 244 ≈ 上市首年）
+    的个股不触发涨跌幅告警——新股上市初期无涨跌幅限制属正常现象。
+    """
     from sqlalchemy import text
 
     from app.data.db_models import DailyBar as ORMDailyBar
@@ -144,6 +149,18 @@ def abnormal_check(db: Database, date: str, pct_limit: float = 0.44) -> list[tup
             if prev:
                 pct = abs(r["close"] - prev) / prev
                 if pct > pct_limit:
+                    first_day = s.execute(
+                        text("SELECT MIN(date) FROM daily_bar WHERE code=:c"),
+                        {"c": code},
+                    ).scalar()
+                    if first_day:
+                        n_days = s.execute(
+                            text("SELECT COUNT(*) FROM daily_bar"
+                                 " WHERE code=:c AND date<=:d"),
+                            {"c": code, "d": date},
+                        ).scalar() or 0
+                        if n_days < exempt_trading_days:
+                            continue  # 新股豁免
                     issues.append((code, f"涨跌幅 {pct:.1%} 超限"))
 
     if issues:
@@ -167,7 +184,8 @@ def run_all_checks(db, source, calendar, codes, date, config) -> dict[str, str]:
         db, source, sample_codes=sample, watchlist=watchlist, date=date,
         tolerance=config.reconcile_price_tolerance, sample_size=config.reconcile_sample_size,
     )
-    abnormal_check(db, date, pct_limit=config.check_anomaly_pct_limit)
+    abnormal_check(db, date, pct_limit=config.check_anomaly_pct_limit,
+                   exempt_trading_days=config.new_stock_exempt_trading_days)
     levels: dict[str, str] = {}
     with db.session() as s:
         from app.data.db_models import DataCheckLog

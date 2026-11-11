@@ -17,9 +17,11 @@ from dataclasses import dataclass, field
 from sqlalchemy import text
 
 from app.backtest import matching
+from app.backtest.engine import industry_of
 from app.backtest.metrics import compute_metrics
 from app.common.config import RiskConfig
 from app.data.db import Database
+from app.data.price_query import PriceQuery
 from app.common.portfolio_models import (
     PortfolioNav, PortfolioPosition, PortfolioTrade,
 )
@@ -29,7 +31,8 @@ from app.strategy.risk.circuit import CircuitBreaker
 from app.strategy.risk.engine import RiskBase, daily_review, get_pending_orders
 from app.strategy.signals import generate_entry_signals
 
-INITIAL_CAPITAL = 200_000.0
+# 初始资金单一来源：RiskConfig.initial_capital（默认 200000）
+INITIAL_CAPITAL = RiskConfig().initial_capital
 
 
 @dataclass
@@ -51,10 +54,11 @@ def _trading_dates(db: Database, start: str, end: str) -> list[str]:
 
 class PaperTradingEngine:
     def __init__(self, db: Database, config: RiskConfig,
-                 initial_capital: float = INITIAL_CAPITAL):
+                 initial_capital: float | None = None):
         self.db = db
         self.config = config
-        self.initial_capital = initial_capital
+        self.initial_capital = initial_capital or config.initial_capital
+        self._pq = PriceQuery(db)
         PoolBase.metadata.create_all(db.engine)
         RiskBase.metadata.create_all(db.engine)
         from app.common.portfolio_models import PortfolioBase
@@ -91,27 +95,10 @@ class PaperTradingEngine:
         return total
 
     def _close(self, code: str, dt: str | None) -> float | None:
-        if dt is None:
-            with self.db.session() as s:
-                v = s.execute(text(
-                    "SELECT close FROM daily_bar WHERE code=:c ORDER BY date DESC LIMIT 1"
-                ), {"c": code}).scalar()
-            return v
-        with self.db.session() as s:
-            v = s.execute(text(
-                "SELECT close FROM daily_bar WHERE code=:c AND date=:d"
-            ), {"c": code, "d": dt}).scalar()
-        return v
+        return self._pq.get_close(code, dt)
 
     def _open(self, code: str, dt: str) -> tuple[float | None, float | None]:
-        with self.db.session() as s:
-            row = s.execute(text(
-                "SELECT open,"
-                " (SELECT close FROM daily_bar p WHERE p.code=:c AND p.date<:d"
-                "  ORDER BY p.date DESC LIMIT 1)"
-                " FROM daily_bar WHERE code=:c AND date=:d"
-            ), {"c": code, "d": dt}).first()
-        return (row[0], row[1]) if row else (None, None)
+        return self._pq.get_open_with_prev_close(code, dt)
 
     def _equity(self, dt: str) -> float:
         return self.state.cash + self.state.unsettled + self._positions_value(dt)
@@ -160,7 +147,8 @@ class PaperTradingEngine:
                 s.add(PortfolioPosition(
                     code=o.code, shares=t.shares, entry_price=t.price,
                     entry_date=date, highest_close=close,
-                    weight=o.weight, score=0.0, industry=""))
+                    weight=o.weight, score=0.0,
+                    industry=industry_of(self.db, o.code)))
                 held.add(o.code)
             s.commit()
 
@@ -249,7 +237,7 @@ class PaperTradingEngine:
             sizing.SignalLike(
                 code=code,
                 level={"medium": "mid", "strong": "strong", "weak": "weak"}[sig.level],
-                industry="",
+                industry=industry_of(self.db, code),
                 score=100.0 + (10.0 if sig.level == "strong" else 0.0))
             for code, sig in signals.items() if sig.entry_allowed
         ]

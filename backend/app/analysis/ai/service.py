@@ -15,7 +15,8 @@ from app.data.db_models import AiAssessment
 
 from .client import LLMClient
 from .inputs import AnnouncementProvider
-from .prompts import build_prompt, build_inputs
+from . import prompts as _prompts
+from .prompts import PROMPT_VERSION, build_prompt, build_inputs  # noqa: F401
 
 
 @dataclass
@@ -26,9 +27,14 @@ class AssessmentRecord:
 
 
 def fingerprint(inputs: dict, model_version: str) -> str:
-    """输入数据指纹 = 财务/校验/公告内容 hash + 模型版本（spec §4.4）。"""
+    """输入数据指纹 = 财务/校验/公告内容 hash + prompt 版本 + 模型版本（spec §4.4）。
+
+    PROMPT_VERSION 参与哈希：改提示词必须 bump prompts.PROMPT_VERSION，
+    指纹变化即触发全池重评（prompt/模型切换 → 全量重评）。
+    """
     payload = json.dumps(
-        {"inputs": inputs, "model_version": model_version},
+        {"inputs": inputs, "model_version": model_version,
+         "prompt_version": _prompts.PROMPT_VERSION},
         ensure_ascii=False, sort_keys=True,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -54,20 +60,24 @@ def assess(
     for _ in range(2):  # 1 次原始调用 + 1 次重试
         resp = client.complete(prompt)
         try:
-            parsed = _parse(resp.content)
+            parsed = parse_llm_output(resp.content)
             break
         except (ValueError, ValidationError):
             continue
 
     if parsed is None:
-        return _persist_degraded(db, code, assessed_at, model_version, fp)
+        return persist_degraded_assessment(db, code, assessed_at, model_version, fp)
 
-    return _persist(
+    return persist_assessment(
         db, code, assessed_at, model_version, fp, parsed.model_dump()
     )
 
 
-def _parse(content: str):
+def parse_llm_output(content: str):
+    """从 LLM 文本中提取并强校验 JSON（容忍 ```json 围栏）。
+
+    公共函数：routing.py 复核路由复用同一解析口径。
+    """
     """从 LLM 文本中提取并强校验 JSON（容忍 ```json 围栏）。"""
     text = content.strip()
     if text.startswith("```"):
@@ -85,7 +95,7 @@ def _parse(content: str):
     return ThreeJudgmentOutput.model_validate(data)
 
 
-def _persist(
+def persist_assessment(
     db: Database, code: str, assessed_at: str, model_version: str,
     fp: str, payload: dict,
 ) -> AssessmentRecord:
@@ -115,7 +125,7 @@ def _persist(
     return AssessmentRecord(code=code, degraded=False, fingerprint=fp)
 
 
-def _persist_degraded(
+def persist_degraded_assessment(
     db: Database, code: str, assessed_at: str, model_version: str, fp: str,
 ) -> AssessmentRecord:
     """降级「未评估」：pending、其余结论空、AI 权重视为 0，不阻塞流程。"""

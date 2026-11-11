@@ -12,6 +12,9 @@ from .inputs import AnnouncementProvider
 
 TREND_PERIODS = 8  # 近 N 期财报趋势序列（N=8，约两年）
 
+# 提示词版本号：改 build_prompt 输出内容必须 bump，触发指纹变化 → 全池重评（spec §4.4）
+PROMPT_VERSION = "v1"
+
 
 def build_inputs(
     db: Database, code: str, provider: AnnouncementProvider,

@@ -2,7 +2,9 @@
 
 - daily_increment：交易日 17:00（cron）。
 - finance_full_refresh：财报季 4/8/10 月 1 日 06:00 全量重拉（可空跑）。
-- 非交易日由管线内部日历判断跳过。
+- ai_pool_assess：交易日 17:20 AI 全池批量评估（run_pool，可空跑占位）。
+- rule_engine_orders：交易日 17:40 规则引擎/指令生成（daily_review，可空跑占位）。
+- 非交易日由任务内部日历判断跳过。
 """
 from __future__ import annotations
 
@@ -10,13 +12,41 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 
-def build_scheduler(daily_job, finance_full_job, tz: str = "Asia/Shanghai") -> BlockingScheduler:
+def build_scheduler(daily_job, finance_full_job,
+                    ai_pool_job=None, rule_engine_job=None,
+                    tz: str = "Asia/Shanghai") -> BlockingScheduler:
+    """注册数据增量、财报重拉与（可选）AI/规则引擎任务。
+
+    ai_pool_job / rule_engine_job 未提供时不注册对应任务（保持旧调用兼容）。
+    """
     sched = BlockingScheduler(timezone=tz)
     sched.add_job(daily_job, CronTrigger(hour=17, minute=0, day_of_week="mon-fri", timezone=tz),
                   id="daily_increment", replace_existing=True)
     sched.add_job(finance_full_job, CronTrigger(month="4,8,10", day=1, hour=6, minute=0, timezone=tz),
                   id="finance_full_refresh", replace_existing=True)
+    if ai_pool_job is not None:
+        sched.add_job(ai_pool_job,
+                      CronTrigger(hour=17, minute=20, day_of_week="mon-fri", timezone=tz),
+                      id="ai_pool_assess", replace_existing=True)
+    if rule_engine_job is not None:
+        sched.add_job(rule_engine_job,
+                      CronTrigger(hour=17, minute=40, day_of_week="mon-fri", timezone=tz),
+                      id="rule_engine_orders", replace_existing=True)
     return sched
+
+
+def default_ai_pool_job():
+    """AI 全池批量评估（spec §4.4）：数据增量后对全池跑 run_pool。
+
+    当前 stub 阶段无可用 LLM client：任务留空跑占位，接入真实 client 后实现。
+    """
+    return 0
+
+
+def default_rule_engine_job():
+    """规则引擎/指令生成占位：收盘决策由 paper_daily（scheduler/paper.py 17:10）
+    经 daily_review 完成；此处为独立调度链路的空跑占位。"""
+    return 0
 
 
 def default_finance_full_job():

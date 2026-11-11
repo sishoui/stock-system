@@ -44,12 +44,18 @@ def check_hard_gates(
         if industry not in H4_EXEMPT_INDUSTRIES:
             reasons.append("H4")
 
-    # H5 最近一年经营现金流 > 0，且 现金流/净利润 > 0.5
+    # H5 口径（spec §5.1「经营现金流/净利润 > 0.5」）：
+    # 规格未细化负利润情形，采用保守口径——净利润 ≤ 0（含缺失为负）时
+    # 盈利质量无法用比值判定，直接剔除（即使经营现金流为正）；
+    # 净利润缺失（None）：比值无法计算，不据此剔除（维持历史口径）。
+    # 口径变更需同步 tests/test_review_fixes.py 与 GLOSSARY。
     if operating_cashflow is None or operating_cashflow <= 0:
         reasons.append("H5")
-    elif net_profit is not None and net_profit > 0:
+    elif net_profit is not None and net_profit <= 0:
+        reasons.append("H5")  # 保守口径：负/零利润剔除
+    elif net_profit is not None:
         if operating_cashflow / net_profit <= CASHFLOW_PROFIT_RATIO_MIN:
             reasons.append("H5")
-    # 净利润为负或缺失：仅要求现金流>0，比例无法判定不剔除
+    # net_profit 为 None：无法判定比值，不剔除
 
     return reasons

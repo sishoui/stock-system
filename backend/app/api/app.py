@@ -82,23 +82,13 @@ def _build_ai_output(db: Database, ai_factor: dict):
 
 
 def _last_close(db: Database, code: str, before: str | None = None) -> float | None:
-    from sqlalchemy import text
-
-    with db.session() as sess:
-        if before:
-            v = sess.execute(
-                text("SELECT close FROM daily_bar WHERE code=:c AND date<=:d"
-                     " ORDER BY date DESC LIMIT 1"), {"c": code, "d": before}).scalar()
-        else:
-            v = sess.execute(
-                text("SELECT close FROM daily_bar WHERE code=:c"
-                     " ORDER BY date DESC LIMIT 1"), {"c": code}).scalar()
-    return v
+    """统一走 PriceQuery.get_close（取价 SQL 收拢）。"""
+    return PriceQuery(db).get_close(code, on_or_before=before)
 
 
 def create_app(db: Database, config: RiskConfig | None = None) -> FastAPI:
     config = config or RiskConfig()
-    config_initial = 200_000.0
+    config_initial = config.initial_capital  # 初始资金单一来源：RiskConfig
     _ensure_tables(db)
     app = FastAPI(title="stock-system API", version="0.1.0")
     app.state.db = db

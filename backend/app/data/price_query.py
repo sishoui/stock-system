@@ -86,3 +86,38 @@ class PriceQuery:
                 b["close"] * k, int(b["volume"]), b["amount"], k,
             ))
         return out
+
+    # -- 轻量取价方法（收拢散落各处的 SELECT close/open） --------------------
+
+    def get_close(self, code: str, dt: str | None = None,
+                  on_or_before: str | None = None) -> float | None:
+        """单日收盘价。dt=当日精确匹配；dt=None 取最新；
+        on_or_before=取不晚于该日的最近收盘。三者互斥，dt 优先。"""
+        with self.db.session() as s:
+            if dt is not None:
+                v = s.execute(text(
+                    "SELECT close FROM daily_bar WHERE code=:c AND date=:d"
+                ), {"c": code, "d": dt}).scalar()
+            elif on_or_before is not None:
+                v = s.execute(text(
+                    "SELECT close FROM daily_bar WHERE code=:c AND date<=:d"
+                    " ORDER BY date DESC LIMIT 1"
+                ), {"c": code, "d": on_or_before}).scalar()
+            else:
+                v = s.execute(text(
+                    "SELECT close FROM daily_bar WHERE code=:c"
+                    " ORDER BY date DESC LIMIT 1"
+                ), {"c": code}).scalar()
+        return v
+
+    def get_open_with_prev_close(self, code: str, dt: str
+                                 ) -> tuple[float | None, float | None]:
+        """某日开盘价 + 前一交易日收盘价（涨跌停判定用）。"""
+        with self.db.session() as s:
+            row = s.execute(text(
+                "SELECT open,"
+                " (SELECT close FROM daily_bar p WHERE p.code=:c AND p.date<:d"
+                "  ORDER BY p.date DESC LIMIT 1)"
+                " FROM daily_bar WHERE code=:c AND date=:d"
+            ), {"c": code, "d": dt}).first()
+        return (row[0], row[1]) if row else (None, None)

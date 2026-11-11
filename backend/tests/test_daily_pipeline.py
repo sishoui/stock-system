@@ -29,6 +29,19 @@ from app.data.trading_calendar import TradeCalendar
 CODES = ["600519.SH", "000001.SZ", "300750.SZ"]
 
 
+def _d(i: int) -> str:
+    from datetime import date as _dd, timedelta as _td
+    return (_dd(2025, 1, 1) + _td(days=i)).isoformat()
+
+
+def _seed_bars(db, code, rows):
+    with db.session() as s:
+        for dt, o, h, l, c, v in rows:
+            s.add(ORMDailyBar(code=code, date=dt, open=o, high=h, low=l,
+                              close=c, volume=v, amount=c * v))
+        s.commit()
+
+
 def make_db(tmp_path: Path) -> Database:
     db = Database(f"sqlite:///{tmp_path/'t.db'}")
     db.create_all()
@@ -211,6 +224,15 @@ def test_cross_source_reconcile_warn_on_mismatch(tmp_path):
 def test_abnormal_detection(tmp_path):
     db = make_db(tmp_path)
     src = StubSource()
+    # 三只均为老股：补 250 个交易日历史，避免落入新股豁免
+    hist = []
+    p = 100.0
+    for i in range(250):
+        p *= 1.001
+        hist.append((_d(i), p, p * 1.002, p * 0.998, p, 1000))
+    for c in CODES:
+        _seed_bars(db, c, [(dt, o * 0.5, h * 0.5, l * 0.5, cl * 0.5, v)
+                           for dt, o, h, l, cl, v in hist])
     _seed_day(db, src, "2026-01-02")  # 前一日基准
     # 涨跌幅超限
     b = src.bar("600519.SH", "2026-01-05")

@@ -52,6 +52,8 @@ class RiskConfig(_Config):
     stamp_tax: float = Field(0.0005, ge=0.0, le=0.01, description="印花税率（仅卖出）")
     slippage: float = Field(0.001, ge=0.0, le=0.05, description="固定滑点（按开盘价）")
     limit_pct: float = Field(0.10, ge=0.05, le=0.20, description="涨跌停幅度")
+    # 初始资金单一来源（spec §11：起始资金 20 万）
+    initial_capital: float = Field(200_000.0, ge=0.0, description="初始资金（元）")
 
     @field_validator("dd_recover")
     @classmethod
@@ -98,6 +100,9 @@ class DataConfig(_Config):
     )
     check_anomaly_pct_limit: float = Field(
         0.44, ge=0.0, le=1.0, description="涨跌幅异常阈值（新股除外）"
+    )
+    new_stock_exempt_trading_days: int = Field(
+        244, ge=0, description="上市未满 N 个交易日内涨跌幅检查豁免（默认上市首年）"
     )
 
 

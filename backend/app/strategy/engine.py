@@ -86,7 +86,8 @@ def run_screening(db: Database, as_of: str) -> ScreeningResult:
             roe_ttm=roe_ttm,
             roe_3y_min=roe_3y_min,
             debt_ratio=latest.debt_ratio if latest else None,
-            industry=None,  # 行业字段 #16 表未含，豁免判定由行业数据接入后启用
+            # 行业 = stock_profile.board（数据层单一来源），H4 金融/地产豁免据此判定
+            industry=p.board,
             operating_cashflow=latest.operating_cashflow if latest else None,
             net_profit=latest.net_profit if latest else None,
         )
