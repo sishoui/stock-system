@@ -28,3 +28,8 @@ export function poll(fn, intervalMs = 30000) {
   tick()
   return () => { stopped = true; clearTimeout(timer) }
 }
+
+/** AI 接口配置：获取 / 保存 / 测试连接 */
+export function getAIConfig() { return get('/ai-config') }
+export function saveAIConfig(body) { return post('/ai-config', body) }
+export function testAIConfig(body) { return post('/ai-config/test', body) }

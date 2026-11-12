@@ -10,12 +10,14 @@ from datetime import date
 
 from fastapi import FastAPI, HTTPException, Query
 
+from app.analysis.ai.client import OpenAIClient
 from app.analysis.ai.service import get_ai_factor
 from app.backtest.engine import BacktestEngine
 from app.backtest.metrics import compute_metrics
 from app.common.config import RiskConfig
 from app.common.enums import SIGNAL_MEDIUM, SIGNAL_STRONG, SIGNAL_WEAK
 from app.data.db import Database
+from app.data.db_models import AICredential
 from app.data.price_query import PriceQuery
 from app.api import schemas as s
 from app.common.portfolio_models import (
@@ -24,6 +26,8 @@ from app.common.portfolio_models import (
 from app.strategy.pool_models import PoolBase, PoolMembership
 from app.strategy.risk.exits import Holding, exit_lines
 from app.strategy.signals import EntrySignalConfig, get_entry_signal
+
+from datetime import datetime as _dt
 
 RISK_CONFIG_PARAMS = [
     ("atr_multiplier", 2.0, 1.5, 3.0, "S1 止损 ATR 倍数"),
@@ -329,6 +333,71 @@ def create_app(db: Database, config: RiskConfig | None = None) -> FastAPI:
             s.RiskConfigParam(name=n, default=d, min=mn, max=mx, description=desc)
             for n, d, mn, mx, desc in RISK_CONFIG_PARAMS
         ])
+
+    # -- /ai-config（页面可编辑 API Key / Base URL / Model）------------------
+
+    def _get_credential(sess) -> AICredential | None:
+        return sess.query(AICredential).order_by(AICredential.id.desc()).first()
+
+    @app.get("/api/ai-config", response_model=s.AICredentialResponse)
+    def ai_config_get():
+        with db.session() as sess:
+            row = _get_credential(sess)
+        if row is None:
+            return s.AICredentialResponse(
+                id=0, api_key_masked="", base_url="https://api.openai.com/v1",
+                model_name="gpt-3.5-turbo", is_active=False, updated_at="",
+            )
+        return s.AICredentialResponse(
+            id=row.id, api_key_masked=s._mask_key(row.api_key),
+            base_url=row.base_url, model_name=row.model_name,
+            is_active=row.is_active, updated_at=row.updated_at,
+        )
+
+    @app.post("/api/ai-config", response_model=s.AICredentialResponse)
+    def ai_config_save(req: s.AICredentialUpdate):
+        now = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        with db.session() as sess:
+            row = _get_credential(sess)
+            if row is None:
+                row = AICredential(
+                    api_key=req.api_key, base_url=req.base_url,
+                    model_name=req.model_name, is_active=req.is_active,
+                    updated_at=now,
+                )
+                sess.add(row)
+            else:
+                # api_key 为空时不覆盖（允许只改 base_url / model / 开关）
+                if req.api_key:
+                    row.api_key = req.api_key
+                row.base_url = req.base_url
+                row.model_name = req.model_name
+                row.is_active = req.is_active
+                row.updated_at = now
+            sess.commit()
+            sess.refresh(row)
+        return s.AICredentialResponse(
+            id=row.id, api_key_masked=s._mask_key(row.api_key),
+            base_url=row.base_url, model_name=row.model_name,
+            is_active=row.is_active, updated_at=row.updated_at,
+        )
+
+    @app.post("/api/ai-config/test", response_model=s.AICredentialTest)
+    def ai_config_test(req: s.AICredentialUpdate):
+        """用当前填写的凭证调用一次 /v1/models 做连通性测试，不落库。"""
+        if not req.api_key:
+            return s.AICredentialTest(ok=False, message="API Key 为空")
+        try:
+            client = OpenAIClient(
+                api_key=req.api_key,
+                base_url=req.base_url,
+                model=req.model_name,
+            )
+            # 兼容 OpenAI / 智谱 / 本地部署：列模型端口通常可用
+            client.complete("ping", model=req.model_name or "gpt-3.5-turbo")
+        except Exception as exc:  # noqa: BLE001 连通性失败统一返回提示
+            return s.AICredentialTest(ok=False, message=str(exc)[:200])
+        return s.AICredentialTest(ok=True, message="连通正常")
 
     # -- /backtests ------------------------------------------------------------
 

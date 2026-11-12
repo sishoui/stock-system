@@ -225,3 +225,35 @@ class PaperReportResponse(BaseModel):
     metrics: dict
     positions: list[PaperPosition]
     trades: list[TradeRecord]
+
+
+# -- AI 接口配置（页面可编辑 api_key / base_url / model）--------------------
+
+def _mask_key(key: str) -> str:
+    """脱敏显示：只显示后 4 位，其余用 * 替代。空字符串返回空。"""
+    if not key:
+        return ""
+    if len(key) <= 8:
+        return "*" * len(key)
+    return "*" * (len(key) - 4) + key[-4:]
+
+
+class AICredentialResponse(BaseModel):
+    id: int
+    api_key_masked: str
+    base_url: str
+    model_name: str
+    is_active: bool
+    updated_at: str
+
+
+class AICredentialUpdate(BaseModel):
+    api_key: str = ""
+    base_url: str = "https://api.openai.com/v1"
+    model_name: str = "gpt-3.5-turbo"
+    is_active: bool = False
+
+
+class AICredentialTest(BaseModel):
+    ok: bool
+    message: str

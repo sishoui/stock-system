@@ -13,6 +13,7 @@ const router = useRouter()
       <RouterLink to="/positions">持仓与交易</RouterLink>
       <RouterLink to="/backtests">回测</RouterLink>
       <RouterLink to="/paper">模拟盘</RouterLink>
+      <RouterLink to="/settings">AI 配置</RouterLink>
     </nav>
   </header>
   <RouterView />

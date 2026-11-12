@@ -7,6 +7,7 @@ import StockDetail from './pages/StockDetail.vue'
 import Positions from './pages/Positions.vue'
 import Backtest from './pages/Backtest.vue'
 import Paper from './pages/Paper.vue'
+import Settings from './pages/Settings.vue'
 import './style.css'
 
 const router = createRouter({
@@ -18,6 +19,7 @@ const router = createRouter({
     { path: '/positions', name: 'positions', component: Positions },
     { path: '/backtests', name: 'backtests', component: Backtest },
     { path: '/paper', name: 'paper', component: Paper },
+    { path: '/settings', name: 'settings', component: Settings },
   ],
 })
 

@@ -173,3 +173,21 @@ class DataCheckLog(Base):
     detail: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     __table_args__ = (Index("ix_data_check_log_date_type", "check_date", "check_type"),)
+
+
+class AICredential(Base):
+    """AI 接口凭证（单行，单用户系统）。页面可编辑 api_key / base_url / model。
+
+    明文存储于本地 SQLite，仅供本机使用；返回前端时 api_key 脱敏。
+    """
+
+    __tablename__ = "ai_credential"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    api_key: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    base_url: Mapped[str] = mapped_column(String(512), nullable=False, default="https://api.openai.com/v1")
+    model_name: Mapped[str] = mapped_column(String(128), nullable=False, default="gpt-3.5-turbo")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+
+    __table_args__ = (Index("ix_ai_credential_id", "id"),)
