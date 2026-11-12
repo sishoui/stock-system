@@ -56,10 +56,19 @@ _BAOSTOCK_COLUMNS = {
 
 
 class BaostockAdapter(BaseQuoteAdapter):
-    """baostock 适配器（代码格式：sh.600519）。"""
+    """baostock 适配器（代码格式：sh.600519）。
 
-    def __init__(self, cache_dir: str | None = None, retry_delays: list[float] | None = None):
-        super().__init__(fetch=_baostock_fetch, cache_dir=cache_dir, retry_delays=retry_delays)
+    未传入 fetch 时，使用内置的 baostock 真实数据源；传入 fetch 时用于测试 stub。
+    """
+
+    def __init__(
+        self,
+        fetch=None,
+        cache_dir: str | None = None,
+        retry_delays: list[float] | None = None,
+    ):
+        _fetch = fetch if fetch is not None else _baostock_fetch
+        super().__init__(fetch=_fetch, cache_dir=cache_dir, retry_delays=retry_delays)
 
     def _to_source_code(self, code: str) -> str:
         num, suffix = code.split(".")

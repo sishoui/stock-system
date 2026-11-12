@@ -73,15 +73,17 @@ class TestProtocols:
         assert issubclass(BaostockAdapter, QuoteSource)
 
     def test_finance_and_profile_are_protocol_only(self):
-        # 协议已定义但无具体实现（后续票）
+        # FinanceSource / ProfileSource 协议已定义；baostock 适配器已实现
+        # get_finance_indicators / get_profile（真实数据回补），akshare 适配器
+        # 继承 BaseQuoteAdapter 的空默认实现，均满足结构化子类型。
         assert issubclass(FinanceSource, object)
         assert issubclass(ProfileSource, object)
-        assert not any(
-            issubclass(c, FinanceSource) for c in (AkshareAdapter, BaostockAdapter)
-        )
-        assert not any(
-            issubclass(c, ProfileSource) for c in (AkshareAdapter, BaostockAdapter)
-        )
+        assert issubclass(BaostockAdapter, FinanceSource)
+        assert issubclass(BaostockAdapter, ProfileSource)
+        # akshare 适配器仅继承 BaseQuoteAdapter 的空默认实现，
+        # 同样满足结构化子类型（方法存在即视为实现）。
+        assert issubclass(AkshareAdapter, FinanceSource)
+        assert issubclass(AkshareAdapter, ProfileSource)
 
 
 class TestAkshareAdapter:

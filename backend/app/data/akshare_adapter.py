@@ -33,10 +33,19 @@ _AKSHARE_COLUMNS = {
 
 
 class AkshareAdapter(BaseQuoteAdapter):
-    """akshare 东财行情适配器（代码格式：纯数字 600519）。"""
+    """akshare 东财行情适配器（代码格式：纯数字 600519）。
 
-    def __init__(self, cache_dir: str | None = None, retry_delays: list[float] | None = None):
-        super().__init__(fetch=_akshare_fetch, cache_dir=cache_dir, retry_delays=retry_delays)
+    未传入 fetch 时，使用内置的 akshare 真实数据源；传入 fetch 时用于测试 stub。
+    """
+
+    def __init__(
+        self,
+        fetch=None,
+        cache_dir: str | None = None,
+        retry_delays: list[float] | None = None,
+    ):
+        _fetch = fetch if fetch is not None else _akshare_fetch
+        super().__init__(fetch=_fetch, cache_dir=cache_dir, retry_delays=retry_delays)
 
     def _to_source_code(self, code: str) -> str:
         return code.split(".")[0]
