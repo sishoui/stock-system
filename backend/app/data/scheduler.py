@@ -38,9 +38,49 @@ def build_scheduler(daily_job, finance_full_job,
 def default_ai_pool_job():
     """AI 全池批量评估（spec §4.4）：数据增量后对全池跑 run_pool。
 
-    当前 stub 阶段无可用 LLM client：任务留空跑占位，接入真实 client 后实现。
+    从 ai_credential 表读取 API Key / Base URL / Model，创建 OpenAIClient，
+    对股票池内全部标的执行三判断评估。未配置或未启用时保持空跑占位。
     """
-    return 0
+    from app.data.db import default_db_url, Database
+    from app.data.db_models import AICredential, PoolMembership
+    from app.analysis.ai.client import OpenAIClient
+    from app.analysis.ai.inputs import AnnouncementProvider
+    from app.analysis.ai.routing import run_pool
+    from app.analysis.ai.cost import CostTracker
+
+    db_url = default_db_url()
+    if "://" not in db_url:
+        db_url = f"sqlite:///{db_url}"
+    db = Database(db_url)
+    db.create_all()
+
+    with db.session() as s:
+        cred = s.query(AICredential).order_by(AICredential.id.desc()).first()
+        codes = [m.code for m in s.query(PoolMembership).all()]
+
+    if cred is None or not cred.is_active or not cred.api_key:
+        return 0  # 未配置/未启用：空跑
+
+    client = OpenAIClient(api_key=cred.api_key, base_url=cred.base_url, model=cred.model_name)
+
+    class _AnnouncementProvider(AnnouncementProvider):
+        """第一版无独立公告源：公告为空，交易日取最近日线日期。"""
+
+        def announcements(self, code: str):
+            return []
+
+        def trading_day(self) -> str:
+            from sqlalchemy import text
+            with db.session() as sess:
+                v = sess.execute(text("SELECT MAX(date) FROM daily_bar")).scalar()
+            return str(v) if v else ""
+
+    provider = _AnnouncementProvider()
+    from app.common.config import AIConfig
+    config = AIConfig()
+    tracker = CostTracker(db, config)
+    result = run_pool(db, codes, client, provider, config, cost_tracker=tracker)
+    return len(result.assessed) + len(result.reviewed) + len(result.degraded)
 
 
 def default_rule_engine_job():
