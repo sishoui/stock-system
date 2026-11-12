@@ -6,6 +6,19 @@ import pandas as pd
 from app.data.base_adapter import BaseQuoteAdapter
 from app.data.models import DailyBar
 
+
+def _akshare_fetch(code: str, start: str, end: str) -> pd.DataFrame:
+    """调用 akshare stock_zh_a_hist 获取历史行情。"""
+    import akshare as ak
+
+    return ak.stock_zh_a_hist(
+        symbol=code,
+        period="daily",
+        start_date=start.replace("-", ""),
+        end_date=end.replace("-", ""),
+        adjust="qfq",  # 前复权
+    )
+
 # akshare stock_zh_a_hist 中文列名 → 英文标准名
 _AKSHARE_COLUMNS = {
     "日期": "date",
@@ -21,6 +34,9 @@ _AKSHARE_COLUMNS = {
 
 class AkshareAdapter(BaseQuoteAdapter):
     """akshare 东财行情适配器（代码格式：纯数字 600519）。"""
+
+    def __init__(self, cache_dir: str | None = None, retry_delays: list[float] | None = None):
+        super().__init__(fetch=_akshare_fetch, cache_dir=cache_dir, retry_delays=retry_delays)
 
     def _to_source_code(self, code: str) -> str:
         return code.split(".")[0]

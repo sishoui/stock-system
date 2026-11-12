@@ -6,6 +6,30 @@ import pandas as pd
 from app.data.base_adapter import BaseQuoteAdapter
 from app.data.models import DailyBar
 
+
+def _baostock_fetch(code: str, start: str, end: str) -> pd.DataFrame:
+    """调用 baostock query_history_k_data_plus 获取历史行情。"""
+    import baostock as bs
+
+    bs.login()
+    try:
+        fields = "date,code,open,high,low,close,volume,amount"
+        rs = bs.query_history_k_data_plus(
+            code,
+            fields,
+            start_date=start.replace("-", ""),
+            end_date=end.replace("-", ""),
+            frequency="d",
+            adjustflag="3",  # 前复权
+        )
+        rows = []
+        while rs.error_code == "0" and rs.next():
+            rows.append(rs.get_row_data())
+        df = pd.DataFrame(rows, columns=rs.fields)
+    finally:
+        bs.logout()
+    return df
+
 # baostock query_history_k_data_plus 列名本身即英文，值为字符串
 _BAOSTOCK_COLUMNS = {
     "date": "date",
@@ -21,6 +45,9 @@ _BAOSTOCK_COLUMNS = {
 
 class BaostockAdapter(BaseQuoteAdapter):
     """baostock 适配器（代码格式：sh.600519）。"""
+
+    def __init__(self, cache_dir: str | None = None, retry_delays: list[float] | None = None):
+        super().__init__(fetch=_baostock_fetch, cache_dir=cache_dir, retry_delays=retry_delays)
 
     def _to_source_code(self, code: str) -> str:
         num, suffix = code.split(".")
