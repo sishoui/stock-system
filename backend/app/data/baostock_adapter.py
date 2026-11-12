@@ -17,15 +17,17 @@ def _baostock_fetch(code: str, start: str, end: str) -> pd.DataFrame:
         rs = bs.query_history_k_data_plus(
             code,
             fields,
-            start_date=start.replace("-", ""),
-            end_date=end.replace("-", ""),
+            start_date=start,  # baostock 要求 yyyy-MM-dd 格式
+            end_date=end,
             frequency="d",
             adjustflag="3",  # 前复权
         )
+        if rs is None or rs.error_code != "0":
+            raise ValueError(f"baostock 查询失败: {rs.error_msg if rs else 'None response'}")
         rows = []
-        while rs.error_code == "0" and rs.next():
+        while rs.next():
             rows.append(rs.get_row_data())
-        df = pd.DataFrame(rows, columns=rs.fields)
+        df = pd.DataFrame(rows, columns=rs.fields) if rows else pd.DataFrame(columns=fields.split(","))
     finally:
         bs.logout()
     return df
@@ -52,6 +54,53 @@ class BaostockAdapter(BaseQuoteAdapter):
     def _to_source_code(self, code: str) -> str:
         num, suffix = code.split(".")
         return f"{suffix.lower()}.{num}"
+
+    def get_profile(self, code: str) -> dict:
+        """从 baostock query_stock_basic 获取基础信息（每次全量拉取，子代码再过滤）。"""
+        import baostock as bs
+        import pandas as pd
+
+        bs.login()
+        try:
+            rs = bs.query_stock_basic()
+            if rs is None or rs.error_code != "0":
+                raise ValueError(
+                    f"baostock 查询股票基本信息失败: {rs.error_msg if rs else 'None response'}"
+                )
+            rows = []
+            while rs.next():
+                rows.append(rs.get_row_data())
+            df = pd.DataFrame(rows, columns=rs.fields)
+
+            source_code = self._to_source_code(code)
+            match = df[df["code"] == source_code]
+            if match.empty:
+                return {
+                    "code": code,
+                    "name": "",
+                    "board": "",
+                    "list_date": "",
+                    "delist_date": None,
+                    "is_st": False,
+                    "status_history": "",
+                }
+            r = match.iloc[0]
+            name = str(r.get("code_name", ""))
+            ipo_date = str(r.get("ipoDate", "")) or ""
+            out_date = str(r.get("outDate", "")) or None
+            if out_date == "":
+                out_date = None
+            return {
+                "code": code,
+                "name": name,
+                "board": "",  # baostock query_stock_basic 不提供行业分类
+                "list_date": ipo_date,
+                "delist_date": out_date,
+                "is_st": "ST" in name or "*ST" in name,
+                "status_history": f"{ipo_date} listed",
+            }
+        finally:
+            bs.logout()
 
     def _convert(self, raw: pd.DataFrame, code: str) -> list[DailyBar]:
         df = raw.rename(columns=_BAOSTOCK_COLUMNS)

@@ -72,6 +72,32 @@ class BaseQuoteAdapter:
         """原始 DataFrame → 标准化 DailyBar 列表（中文列名转换在此）。"""
         raise NotImplementedError
 
+    # -- 其他数据源接口（回补管线会调用，真实适配器可逐步实现） ----------
+
+    def get_adjust_factors(self, code: str, start: str, end: str) -> list[dict]:
+        """复权因子列表，字段: code/date/factor。默认空，子类可覆盖。"""
+        return []
+
+    def get_valuations(self, code: str, start: str, end: str) -> list[dict]:
+        """估值列表，字段: code/date/pe/pe_ttm/pb/dividend_yield/total_mv。默认空。"""
+        return []
+
+    def get_finance_indicators(self, code: str) -> list[dict]:
+        """财务指标列表，字段: code/report_period/ann_date/roe/...。默认空。"""
+        return []
+
+    def get_profile(self, code: str) -> dict:
+        """基础信息，字段: code/name/board/list_date/delist_date/is_st/status_history。默认空。"""
+        return {
+            "code": code,
+            "name": "",
+            "board": "",
+            "list_date": "",
+            "delist_date": None,
+            "is_st": False,
+            "status_history": "",
+        }
+
     # -- 公共流程 ---------------------------------------------------------
 
     def get_daily_bars(self, code: str, start: str, end: str) -> list[DailyBar]:
